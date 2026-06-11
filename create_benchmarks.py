@@ -235,15 +235,21 @@ def main():
     parser.add_argument("--reps", type=int, default=5)
     parser.add_argument("--report-dir", default="measurements")
     parser.add_argument("--check-overflows", action="store_true")
+    parser.add_argument("--output")
     args = parser.parse_args()
     suite = args.suite
 
     build_prusti()
-    dir = compile_suite(
-        iterative_bench(100, ["+", "-", "/", "*"], step=10), args.check_overflows
-    )
-    # dir = compile_suite(benchmarks(suite), args.check_overflows)
-    print(dir)
+    # dir = compile_suite(
+    #     iterative_bench(100, ["+", "-", "/", "*"], step=10), args.check_overflows
+    # )
+    dir = compile_suite(benchmarks(suite), args.check_overflows)
+    if args.output is None:
+        print(dir)
+    else:
+        if Path(args.output).exists():
+            shutil.rmtree(args.output)
+        shutil.move(dir, args.output)
     # run_benchmark(dir)
 
 
