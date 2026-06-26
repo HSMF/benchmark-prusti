@@ -62,6 +62,7 @@ def run_full_suites(suites, docker, reps, get_results_file: Callable[[Path], Pat
     for suite in suites:
         ret = run_benchmark(abspath(suite), docker, reps)
         results = get_results_file(Path(suite))
+        makedirs(results.parent, exist_ok=True)
         shutil.copy(ret, results)
 
 
