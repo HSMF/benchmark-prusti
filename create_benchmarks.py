@@ -1,3 +1,4 @@
+from textwrap import dedent
 from paths import PRUSTI_DEV_SOURCE
 from random import choice
 from random import randint
@@ -23,6 +24,7 @@ import statistics
 import paths
 
 TMPDIR = "/tmp/prusti-bench"
+DOCKER_IMAGE = None
 
 
 def get_file(name: str):
@@ -97,6 +99,65 @@ def compile_to_viper(file: Path, check_overflows):
 
     shutil.copy(PRUSTI_DEV_SOURCE + "/log/viper_program/program-check.vpr", dst)
     return dst
+
+
+class DockerCompiler:
+    def __init__(self):
+        self.project = get_file("proj")
+        (self.project / "src").mkdir(parents=True, exist_ok=True)
+        makedirs(TMPDIR, exist_ok=True)
+
+    def compile(self, file: Path, check_overflows):
+        cargo_toml = self.project / "Cargo.toml"
+        cargo_toml.write_text(dedent("""
+        [package]
+        name = "bad-example"
+        version = "0.1.0"
+        edition = "2024"
+
+        [dependencies]
+        prusti-contracts = { path = "/opt/prusti-dev/prusti-contracts/prusti-contracts" }
+        """))
+        src = self.project / "src" / "lib.rs"
+        src.write_text(file.read_text())
+        check_overflows = str(check_overflows).lower()
+
+        viperfile = self.project / "target/verify/log/viper_program/program-check.vpr"
+        viperfile.unlink(missing_ok=True)
+
+        run(
+            (
+                "docker",
+                "run",
+                "--rm",
+                "-it",
+                "-e",
+                "PRUSTI_DUMP_VIPER_PROGRAM=true",
+                "-e",
+                "PRUSTI_DUMP_DEBUG_INFO=true",
+                "-e",
+                f"PRUSTI_CHECK_OVERFLOWS={check_overflows}",
+                "-w",
+                "/root/project",
+                "-v",
+                f"{self.project}:/root/project",
+                DOCKER_IMAGE,
+                "bash",
+                "-c",
+                """
+                useradd user -u 1000
+                trap 'chown -R user:user .' EXIT
+                cargo prusti
+                """,
+            )
+        )
+
+        dst = file.with_suffix(".vpr")
+
+        if viperfile.exists():
+            shutil.copy(viperfile, dst)
+
+        return dst
 
 
 def compute_stats(measurements):
@@ -212,10 +273,14 @@ def iterative_bench(n: int, ops: list[str], step=1) -> Iterable[tuple[str, str]]
 def compile_suite(benchmarks, check_overflows):
     f = get_file("benchmarks")
     makedirs(f)
+    d = DockerCompiler()
     for filename, src in benchmarks:
         rsfile = f / f"{filename}.rs"
         rsfile.write_text(src)
-        viper = compile_to_viper(rsfile, check_overflows)
+        if DOCKER_IMAGE is None:
+            viper = compile_to_viper(rsfile, check_overflows)
+        else:
+            viper = d.compile(rsfile, check_overflows)
     return f
 
 
@@ -230,16 +295,21 @@ def run_benchmark(dir):
 
 
 def main():
+    global DOCKER_IMAGE
     parser = argparse.ArgumentParser()
     parser.add_argument("suite")
     parser.add_argument("--reps", type=int, default=5)
     parser.add_argument("--report-dir", default="measurements")
     parser.add_argument("--check-overflows", action="store_true")
     parser.add_argument("--output")
+    parser.add_argument("--docker-image")
     args = parser.parse_args()
     suite = args.suite
 
-    build_prusti()
+    DOCKER_IMAGE = args.docker_image
+
+    if DOCKER_IMAGE is None:
+        build_prusti()
     # dir = compile_suite(
     #     iterative_bench(100, ["+", "-", "/", "*"], step=10), args.check_overflows
     # )
