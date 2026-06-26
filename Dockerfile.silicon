@@ -1,0 +1,24 @@
+FROM sbtscala/scala-sbt
+WORKDIR /app
+
+RUN : \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    --no-install-recommends \
+    unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# manual install of z3 to get a newer version
+RUN curl -L \
+    https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip \
+    -o /tmp/z3.zip \
+    && cd /tmp/ \
+    && unzip z3.zip \
+    && cp z3-4.16.0-x64-glibc-2.39/bin/z3 /bin/z3 \
+    && rm -rf z3-4.16.0-x64-glibc-2.39 \
+    && rm /tmp/z3.zip
+
+COPY . .
+
+RUN sbt test:compile
