@@ -102,12 +102,14 @@ class Store:
                 self.data[suite, bench].mean for bench in self.benches_of_suite(suite)
             ]
 
-            print(f"{suite:<40} {np.mean(means)}")
+            print(
+                f"{suite:<40} {round(np.mean(means), 1):<10} {round(np.median(means), 1):<10} {round(np.std(means), 1):<10}"
+            )
 
     def hist_medians(self):
         suites = self.suites()
-        width = min(3, len(suites))
-        height = (len(suites) + 2) // 3
+        width = min(2, len(suites))
+        height = (len(suites) + 2) // 2
         fig, axes = plt.subplots(height, width)
 
         max_x = 0
