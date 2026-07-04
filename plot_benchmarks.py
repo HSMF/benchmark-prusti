@@ -1,3 +1,7 @@
+import json
+import subprocess
+import itertools
+from typing import Callable
 from typing import Iterable
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
@@ -42,6 +46,20 @@ class Store:
 
         self.data[suite, label] = datapoint
 
+    def filter(self, f: Callable[[Datapoint], bool], strict=False):
+        suites = self.suites()
+        ret = Store()
+        comb = all if strict else any
+        for b in self.benchmarks:
+            datapoints = [self.data.get((s, b), None) for s in suites]
+            datapoints = [(s, i) for s, i in zip(suites, datapoints) if i is not None]
+            keep = comb(f(d) for _, d in datapoints)
+            if not keep:
+                continue
+            for s, data in datapoints:
+                ret.add_datapoint(b, s, data)
+        return ret
+
     def suites(self):
         return sorted({suite for suite, _ in self.data})
 
@@ -56,6 +74,7 @@ class Store:
         all_handles = []
 
         bar_width = 0.75 / len(suites)  # total group width = 0.75
+        error_x = []
         for si, suite in enumerate(suites):
             color = PALETTE[si % len(PALETTE)]
             offset = (si - (len(suites) - 1) / 2) * bar_width
@@ -63,8 +82,14 @@ class Store:
             stdevs = np.zeros(len(self.benchmarks))
 
             for i, bench in enumerate(self.benchmarks):
-                means[i] = self.data.get((suite, bench), Datapoint.default()).mean
-                stdevs[i] = self.data.get((suite, bench), Datapoint.default()).stddev
+                dp = self.data.get((suite, bench))
+                if dp is None:
+                    error_x.append(x[i] + offset)
+                    continue
+                means[i] = dp.mean
+                stdevs[i] = dp.stddev
+                if dp.outputs != 0:
+                    error_x.append(x[i] + offset)
             all_handles.append(mpatches.Patch(color=color, label=suite))
 
             bars = ax.bar(
@@ -86,25 +111,43 @@ class Store:
                 capsize=4,
                 zorder=4,
             )
-
+        if error_x:
+            ax.scatter(
+                error_x,
+                [0] * len(error_x),
+                marker="x",
+                color="red",
+                s=40,
+                linewidths=1.5,
+                zorder=5,
+                clip_on=False,
+                transform=ax.get_xaxis_transform(),
+            )
         ax.set_yscale("log")
         ax.set_xticks(x)
         ax.set_xticklabels(self.benchmarks, rotation=35, ha="right", fontsize=9)
         ax.set_ylabel("Time (ms)", fontsize=11)
         ax.legend(handles=all_handles, fontsize=9, loc="upper left")
 
-        plt.show()
+        plt.savefig("/tmp/t.png")
+        subprocess.run(("kitty", "+kitten", "icat", "/tmp/t.png"))
 
     def overall_mean(self):
         suites = self.suites()
+        ret = []
         for suite in suites:
             means = [
                 self.data[suite, bench].mean for bench in self.benches_of_suite(suite)
             ]
 
-            print(
-                f"{suite:<40} {round(np.mean(means), 1):<10} {round(np.median(means), 1):<10} {round(np.std(means), 1):<10}"
+            mean = round(np.mean(means), 1)
+            median = round(np.median(means), 1)
+            stddev = round(np.std(means), 1)
+            ret.append(
+                {"suite": suite, "mean": mean, "median": median, "stddev": stddev}
             )
+            print(f"{suite:<40} {mean:<10} {median:<10} {stddev:<10}")
+        return ret
 
     def hist_medians(self):
         suites = self.suites()
@@ -127,6 +170,7 @@ class Store:
 
     def num_failures(self):
         suites = self.suites()
+        ret = []
         for suite in suites:
             failures = 0
             total = 0
@@ -137,7 +181,9 @@ class Store:
                 total += 1
                 if d.outputs != 0:
                     failures += 1
+            ret.append({"suite": suite, "failures": failures, "total": total})
             print(f"{suite:<40} {failures:>5} / {total}")
+        return ret
 
 
 def suite_name(name: str):
@@ -150,37 +196,54 @@ def suite_name(name: str):
     return name + suffix
 
 
+def load_data(suite: str, store: Store, data: list[dict]):
+    for i in data:
+        store.add_datapoint(
+            Path(i["File"]).stem,
+            suite,
+            Datapoint(
+                mean=float(i["Mean [ms]"]),
+                stddev=float(i["StdDev [ms]"]),
+                outputs=int(i["Outputs"]),
+            ),
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("benchmarks", nargs="+")
+    parser.add_argument("--prover", nargs="*", default=["z3"])
+    parser.add_argument("--filter")
+    parser.add_argument("--output-stats")
     args = parser.parse_args()
 
     store = Store()
 
-    for suite in args.benchmarks:
+    for suite, prover in itertools.product(args.benchmarks, args.prover):
         name = suite_name(Path(suite).name)
+        if len(args.prover) != 1:
+            name += f"-{prover}"
+        file = f"{suite}/results-{prover}.csv"
         try:
-            with open(f"{suite}/results.csv") as f:
+            with open(file) as f:
                 data = list(csv.DictReader(f))
         except FileNotFoundError:
-            print(f"{suite} ({name}) has no results.csv (yet)")
+            print(f"{suite} ({name}) has no {file} (yet)")
             continue
+        load_data(name, store, data)
 
-        for i in data:
-            store.add_datapoint(
-                Path(i["File"]).stem,
-                name,
-                Datapoint(
-                    mean=float(i["Mean [ms]"]),
-                    stddev=float(i["StdDev [ms]"]),
-                    outputs=int(i["Outputs"]),
-                ),
-            )
-
+    if args.filter is not None:
+        store = store.filter(lambda d: eval(args.filter))
+    # store = store.filter(lambda d: d.outputs == 0)
+    # store = store.filter(lambda d: d.outputs != 0)
     store.plot()
-    store.hist_medians()
-    store.num_failures()
-    store.overall_mean()
+    # store.hist_medians()
+    failures = store.num_failures()
+    means = store.overall_mean()
+
+    if args.output_stats is not None:
+        with open(args.output_stats, "w") as f:
+            json.dump({"failures": failures, "means": means}, f)
 
 
 if __name__ == "__main__":

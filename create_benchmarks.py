@@ -1,3 +1,4 @@
+from subprocess import CompletedProcess
 from textwrap import dedent
 from paths import PRUSTI_DEV_SOURCE
 from random import choice
@@ -45,7 +46,7 @@ def check_call(args, **kwargs):
     return subprocess.check_call(args, **kwargs)
 
 
-def run(args, **kwargs):
+def run(args, **kwargs) -> CompletedProcess[str]:
     print(f"> {shlex.join(args)}", file=sys.stderr)
     return subprocess.run(args, **kwargs)
 
@@ -147,7 +148,22 @@ class DockerCompiler:
                 """
                 useradd user -u 1000
                 trap 'chown -R user:user .' EXIT
-                cargo prusti
+                target_file=target/verify/log/viper_program/program-check.vpr
+                rm "$target_file"
+                cargo prusti &
+                pid=$!
+                while kill -0 "$pid" 2>/dev/null; do
+                    if [ -e "$target_file" ]; then
+                        echo
+                        echo "$target_file exists"
+                        kill "$pid"
+                        break
+                    fi
+                    sleep 1
+                done
+                echo "waiting ..."
+
+                # wait "$pid" 2>/dev/null
                 """,
             )
         )
@@ -313,7 +329,10 @@ def main():
     # dir = compile_suite(
     #     iterative_bench(100, ["+", "-", "/", "*"], step=10), args.check_overflows
     # )
+    t0 = time()
     dir = compile_suite(benchmarks(suite), args.check_overflows)
+    t1 = time()
+    print(f"done in {timedelta(seconds=int(t1 - t0))}")
     if args.output is None:
         print(dir)
     else:
