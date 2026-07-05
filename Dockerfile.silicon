@@ -13,12 +13,51 @@ RUN : \
 RUN curl -L \
     https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip \
     -o /tmp/z3.zip \
+    https://github.com/cvc5/cvc5/releases/download/latest/cvc5-Linux-x86_64-static-2026-07-01-5d75505.zip \
+    -o /tmp/cvc5.zip \
     && cd /tmp/ \
     && unzip z3.zip \
     && cp z3-4.16.0-x64-glibc-2.39/bin/z3 /bin/z3 \
-    && rm -rf z3-4.16.0-x64-glibc-2.39 \
-    && rm /tmp/z3.zip
+    && unzip cvc5.zip \
+    && cp cvc5-Linux-x86_64-static/bin/cvc5 /bin/cvc5 \
+    && rm -rf z3-4.16.0-x64-glibc-2.39 cvc5-Linux-x86_64-static/bin/cvc5 \
+    && rm /tmp/z3.zip /tmp/cvc5.zip
 
 COPY . .
 
+RUN bash -ex <<'EOF'
+cat <<'EOS' >/tmp/patch
+12a13
+> SILICONTESTS_PROVER=Z3
+19a21
+>   echo "      --prover [cvc5|Z3] (default: $SILICONTESTS_PROVER, if empty: Z3)"
+61a64
+> prover:,\
+89a93
+>     --prover) SILICONTESTS_PROVER=$2; shift ;;
+111a116
+>   -DSILICONTESTS_PROVER=$SILICONTESTS_PROVER
+114c119,120
+<   viper.silicon.tests.PortableSiliconTests"
+---
+>   viper.silicon.tests.PortableSiliconTests
+>   "
+EOS
+patch utils/scripts/benchmark.sh /tmp/patch
+
+cat <<'EOS' >/tmp/patch
+84c84,85
+<   ) ++ (if (System.getProperty(randomizePropertyName, "false").toBoolean) Seq("--proverRandomizeSeeds") else Seq.empty)
+---
+>   ) ++ (if (System.getProperty(randomizePropertyName, "false").toBoolean) Seq("--proverRandomizeSeeds") else Seq.empty
+>   ) ++ Seq("--prover", System.getProperty("SILICONTESTS_PROVER", "Z3"))
+EOS
+patch src/test/scala/PortableSiliconTests.scala /tmp/patch
+
+rm /tmp/patch
+EOF
+
 RUN sbt test:compile
+
+ENV CVC5_EXE=/bin/cvc5
+ENV Z3_EXE=/bin/z3
