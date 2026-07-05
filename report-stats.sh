@@ -36,3 +36,20 @@ python plot_benchmarks.py \
 	benchmarks/tight-conversion-arith \
 	benchmarks/tight-conversion-arith-overflows \
 	--prover cvc5 z3 --output-stats stats/arith.json
+
+python plot_benchmarks.py \
+	benchmarks/baseline-arith-overflows \
+	benchmarks/bitwise-everywhere-arith-overflows \
+	benchmarks/tight-conversion-arith-overflows \
+	--filter-strict \
+	--prover z3 --output-stats stats/arith-no-overflow-strict.json --filter "d.outputs == 0"
+python plot_benchmarks.py \
+	benchmarks/bitwise-everywhere-bitwise-overflows \
+	benchmarks/tight-conversion-bitwise-overflows \
+	--filter-strict \
+	--prover z3 --output-stats stats/bitwise-no-overflow-strict.json --filter "d.outputs == 0"
+python plot_benchmarks.py \
+	benchmarks/bitwise-everywhere-mixed-overflows \
+	benchmarks/tight-conversion-mixed-overflows \
+	--filter-strict \
+	--prover z3 --output-stats stats/mixed-no-overflow-strict.json --filter "d.outputs == 0"

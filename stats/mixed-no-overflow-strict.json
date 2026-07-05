@@ -1,0 +1,1 @@
+{"failures": [{"suite": "bitwise-everywhere-overflows", "failures": 0, "total": 20}, {"suite": "tight-conversion-overflows", "failures": 0, "total": 20}], "means": [{"suite": "bitwise-everywhere-overflows", "mean": 1357.2, "median": 531.0, "stddev": 1854.4}, {"suite": "tight-conversion-overflows", "mean": 3020.5, "median": 549.0, "stddev": 5155.4}]}

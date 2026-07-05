@@ -5,10 +5,14 @@
   vals.filter(x => x.suite == suite).at(0)
 }
 #let suite_name(suite) = {
-  suite.replace(regex("(-overflows)?-(z3|cvc5)$"), "")
+  suite.replace(regex("(-overflows)?(-z3|cvc5)?$"), "")
 }
 #let suite_prover(suite) = {
-  suite.replace(regex("(?:.*)-(z3|cvc5)$"), x => x.captures.at(0))
+  if suite.contains(regex("z3|cvc5")) {
+    suite.replace(regex("(?:.*)-(z3|cvc5)$"), x => x.captures.at(0))
+  } else {
+    "z3"
+  }
 }
 #let suite_overflows(suite) = {
   if suite.contains("overflows") {
@@ -19,8 +23,9 @@
 }
 
 #let foo(means, failures) = {
+  let skip = failures.filter(x => x.total == 1).map(x => x.suite)
   let best(arr, hm) = {
-    arr.map(x => x.at(hm)).fold(arr.at(0).at(hm), (x, y) => calc.min(x, y))
+    arr.filter(x => not skip.contains(x.suite)).map(x => x.at(hm)).fold(arr.at(0).at(hm), (x, y) => calc.min(x, y))
   }
   let failure_rates = failures.map(x => {
     x.rate = x.failures / x.total
@@ -40,11 +45,9 @@
     ),
     table.hline(),
     ..means
+      .filter(x => not skip.contains(x.suite))
       .map(x => {
         let fail = get_by_suite(failure_rates, x.suite)
-        if fail.total == 1 {
-          return ()
-        }
         (
           suite_name(x.suite),
           suite_prover(x.suite),
@@ -67,6 +70,8 @@
 
 CO = checked overflows
 
+= Arithmetic-only Benchmarks
+
 == Arithmetic
 
 #foo(..filter(json("stats/arith.json"), x => true))
@@ -75,6 +80,12 @@ CO = checked overflows
 == Arithmetic, dataset without overflows
 
 #foo(..filter(json("stats/arith-no-overflow.json"), x => x.suite.contains("overflows")))
+
+== Arithmetic, dataset without overflows, all passing
+
+#foo(..filter(json("stats/arith-no-overflow-strict.json"), x => x.suite.contains("overflows")))
+
+= Bitwise-only Benchmarks
 
 == Bitwise
 
@@ -85,6 +96,12 @@ CO = checked overflows
 
 #foo(..filter(json("stats/bitwise-no-overflow.json"), x => x.suite.contains("overflows")))
 
+== Bitwise, dataset without overflows, all passing
+
+#foo(..filter(json("stats/bitwise-no-overflow-strict.json"), x => x.suite.contains("overflows")))
+
+= Mixed Benchmarks
+
 == Mixed
 
 #foo(..filter(json("stats/mixed.json"), x => true))
@@ -92,5 +109,9 @@ CO = checked overflows
 
 == Mixed, dataset without overflows
 
-#foo(..filter(json("stats/mixed-no-overflows.json"), x => x.suite.contains("overflows")))
+#foo(..filter(json("stats/mixed-no-overflow.json"), x => x.suite.contains("overflows")))
+
+== Mixed, dataset without overflows, all passing
+
+#foo(..filter(json("stats/mixed-no-overflow-strict.json"), x => x.suite.contains("overflows")))
 

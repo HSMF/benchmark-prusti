@@ -214,6 +214,7 @@ def main():
     parser.add_argument("benchmarks", nargs="+")
     parser.add_argument("--prover", nargs="*", default=["z3"])
     parser.add_argument("--filter")
+    parser.add_argument("--filter-strict", action="store_true")
     parser.add_argument("--output-stats")
     args = parser.parse_args()
 
@@ -233,7 +234,7 @@ def main():
         load_data(name, store, data)
 
     if args.filter is not None:
-        store = store.filter(lambda d: eval(args.filter))
+        store = store.filter(lambda d: eval(args.filter), strict=args.filter_strict)
     # store = store.filter(lambda d: d.outputs == 0)
     # store = store.filter(lambda d: d.outputs != 0)
     store.plot()
