@@ -1,3 +1,4 @@
+from typing import Sequence
 from subprocess import CompletedProcess
 from textwrap import dedent
 from paths import PRUSTI_DEV_SOURCE
@@ -25,7 +26,7 @@ import statistics
 import paths
 
 TMPDIR = "/tmp/prusti-bench"
-DOCKER_IMAGE = None
+DOCKER_IMAGE: None | str = None
 
 
 def get_file(name: str):
@@ -46,8 +47,8 @@ def check_call(args, **kwargs):
     return subprocess.check_call(args, **kwargs)
 
 
-def run(args, **kwargs) -> CompletedProcess[str]:
-    print(f"> {shlex.join(args)}", file=sys.stderr)
+def run(args: Sequence[str | bytes | Path], **kwargs) -> CompletedProcess[str]:
+    print(f"> {shlex.join([str(i) for i in args ])}", file=sys.stderr)
     return subprocess.run(args, **kwargs)
 
 
@@ -126,6 +127,7 @@ class DockerCompiler:
         viperfile = self.project / "target/verify/log/viper_program/program-check.vpr"
         viperfile.unlink(missing_ok=True)
 
+        assert DOCKER_IMAGE is not None
         run(
             (
                 "docker",
@@ -323,6 +325,11 @@ def main():
     suite = args.suite
 
     DOCKER_IMAGE = args.docker_image
+    print(f"building suite {args.suite} for {DOCKER_IMAGE or 'repo'}")
+    print(f"checking overflows: {args.check_overflows}")
+    print()
+    print()
+    print()
 
     if DOCKER_IMAGE is None:
         build_prusti()

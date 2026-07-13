@@ -28,10 +28,24 @@ class Datapoint:
     mean: float
     stddev: float
     outputs: int
+    worst: float
+    best: float
+    file: str
 
     @classmethod
     def default(cls):
-        return cls(mean=0.0, stddev=0.0, outputs=0)
+        return cls(mean=0.0, stddev=0.0, outputs=0, worst=0.0, best=0.0, file="")
+
+    @classmethod
+    def from_csv_row(cls, row):
+        return Datapoint(
+            file=row["File"],
+            mean=float(row["Mean [ms]"]),
+            stddev=float(row["StdDev [ms]"]),
+            outputs=int(row["Outputs"]),
+            worst=float(row["Worst [ms]"]),
+            best=float(row["Best [ms]"]),
+        )
 
 
 class Store:
@@ -63,8 +77,14 @@ class Store:
     def suites(self):
         return sorted({suite for suite, _ in self.data})
 
+    def get_benchmarks(self):
+        return self.benchmarks
+
     def benches_of_suite(self, suite: str) -> Iterable[str]:
         return [bench for s, bench in self.data if s == suite]
+
+    def data_of_suite(self, suite: str) -> dict[str, Datapoint]:
+        return dict((b, self.data[suite, b]) for b in self.benches_of_suite(suite))
 
     def plot(self):
         suites = self.suites()
@@ -201,12 +221,25 @@ def load_data(suite: str, store: Store, data: list[dict]):
         store.add_datapoint(
             Path(i["File"]).stem,
             suite,
-            Datapoint(
-                mean=float(i["Mean [ms]"]),
-                stddev=float(i["StdDev [ms]"]),
-                outputs=int(i["Outputs"]),
-            ),
+            Datapoint.from_csv_row(i),
         )
+
+
+def load_all(benchmarks, prover):
+    store = Store()
+    for suite, prover in itertools.product(benchmarks, prover):
+        name = suite_name(Path(suite).name)
+        if len(prover) != 1:
+            name += f"-{prover}"
+        file = f"{suite}/results-{prover}.csv"
+        try:
+            with open(file) as f:
+                data = list(csv.DictReader(f))
+        except FileNotFoundError:
+            # print(f"{suite} ({name}) has no {file} (yet)")
+            continue
+        load_data(name, store, data)
+    return store
 
 
 def main():
@@ -220,18 +253,7 @@ def main():
 
     store = Store()
 
-    for suite, prover in itertools.product(args.benchmarks, args.prover):
-        name = suite_name(Path(suite).name)
-        if len(args.prover) != 1:
-            name += f"-{prover}"
-        file = f"{suite}/results-{prover}.csv"
-        try:
-            with open(file) as f:
-                data = list(csv.DictReader(f))
-        except FileNotFoundError:
-            print(f"{suite} ({name}) has no {file} (yet)")
-            continue
-        load_data(name, store, data)
+    store = load_all(args.benchmarks, args.prover)
 
     if args.filter is not None:
         store = store.filter(lambda d: eval(args.filter), strict=args.filter_strict)

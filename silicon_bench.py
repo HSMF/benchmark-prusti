@@ -1,3 +1,5 @@
+import json
+from typing import Protocol
 from datetime import timedelta
 from time import time
 from typing import Callable
@@ -12,6 +14,35 @@ from create_benchmarks import run
 from create_benchmarks import get_file
 import argparse
 import csv
+
+
+class Logger(Protocol):
+    def log(self, s: str) -> None: ...
+
+
+class StdoutLogger(Logger):
+    def log(self, s: str):
+        print(s)
+
+
+class FileLogger(Logger):
+    def __init__(self, fname: str):
+        self.fname = fname
+
+    def log(self, s: str):
+        with open(self.fname, "a") as f:
+            json.dump({"s": s, "time": time()}, fp=f)
+            f.write("\n")
+            f.flush()
+
+
+class Broadcast(Logger):
+    def __init__(self, *log: Logger):
+        self.logs = log
+
+    def log(self, s: str):
+        for i in self.logs:
+            i.log(s)
 
 
 def run_benchmark(dir, docker: bool = False, reps: int = 10, prover="z3"):
@@ -62,9 +93,14 @@ def next_results_file(dir: Path):
 
 
 def run_full_suites(
-    suites, docker, reps, get_results_file: Callable[[Path], Path], prover
+    suites,
+    docker,
+    reps,
+    get_results_file: Callable[[Path], Path],
+    prover,
+    log: Logger = StdoutLogger(),
 ):
-    print(suites)
+    log.log(suites)
     for suite in suites:
         t0 = time()
         results = get_results_file(Path(suite))
@@ -72,10 +108,10 @@ def run_full_suites(
         makedirs(results.parent, exist_ok=True)
         shutil.copy(ret, results)
         t1 = time()
-        print("==============")
-        print(f"done with {suite} in {timedelta(seconds=int(t1-t0))}")
-        print("==============")
-        print()
+        log.log("==============")
+        log.log(f"done with {suite} in {timedelta(seconds=int(t1-t0))}")
+        log.log("==============")
+        log.log("")
 
 
 def main():
@@ -89,6 +125,8 @@ def main():
     )
     parser.add_argument("--prover", default="Z3")
     args = parser.parse_args()
+
+    lg = Broadcast(StdoutLogger(), FileLogger("silicon_bench.log"))
 
     if args.cycle:
         while True:
@@ -106,6 +144,7 @@ def main():
             args.reps,
             lambda s: s / f"results-{args.prover.lower()}.csv",
             args.prover,
+            log=lg,
         )
 
 
