@@ -188,6 +188,18 @@ def deep_get(d: dict, *path: str) -> dict:
     return d
 
 
+def ser_data(data: dict[str, Datapoint]):
+    return {
+        k: {
+            "mean": v.mean,
+            "timeout": v.best > TIMEOUT,
+            "fails": v.outputs > 0,
+            "stddev": v.stddev,
+        }
+        for k, v in data.items()
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("benchmarks", nargs="+")
@@ -236,6 +248,11 @@ def main():
         part["arith"] = individual_stats(arith(data))
         part["bitwise"] = individual_stats(bitwise(data))
         part["mixed"] = individual_stats(mixed(data))
+        part["mean_no_timeout"] = np.mean(
+            [i.mean for i in minus(data, any_timeout(data)).values()]
+        )
+        part["data"] = ser_data(data)
+
     with (
         open(args.output, "w")
         if args.output is not None
